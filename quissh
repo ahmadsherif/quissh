@@ -1,0 +1,49 @@
+#!/usr/bin/env escript
+
+main(Args) ->
+  ParsedArgs = parse_args(Args),
+
+  ProviderModule = list_to_atom("quissh_" ++ maps:get(provider, ParsedArgs, "aws")),
+
+  ProviderModule:start_link(ParsedArgs),
+  print_machine_choices(ProviderModule:available_machines()),
+
+  Line  = io:get_line("Choose your destination: "),
+  Index = input_line_to_integer(Line),
+
+  quissh_nif:exec(os:find_executable("ssh"), ProviderModule:machine_ssh_args(Index)).
+
+print_machine_choices(MachinesList) ->
+  print_machine_choices(MachinesList, 1).
+
+print_machine_choices([#{name := Name, ip_address := IpAddress}|Rest], Index) ->
+  io:format("[~b] ~s (~s)~n", [Index, Name, IpAddress]),
+
+  print_machine_choices(Rest, Index + 1);
+print_machine_choices([], _) ->
+  ok.
+
+input_line_to_integer(Line) ->
+  Line2 = string:strip(Line, both, $\n),
+  Line3 = string:strip(Line2),
+
+  list_to_integer(Line3).
+
+parse_args(Args) ->
+  parse_args(Args, #{}).
+
+parse_args([Option, Provider|Rest], State) when Option == "--provider"; Option == "-p" ->
+  NewState = maps:put(provider, Provider, State),
+
+  parse_args(Rest, NewState);
+parse_args([Option, SshUser|Rest], State) when Option == "--ssh-user"; Option == "-u" ->
+  NewState = maps:put(ssh_user, SshUser, State),
+
+  parse_args(Rest, NewState);
+parse_args([Option, Value|Rest], State) ->
+  Option2 = string:strip(Option, left, $-),
+  NewState = maps:put(list_to_atom(Option2), Value, State),
+
+  parse_args(Rest, NewState);
+parse_args([], State) ->
+  State.
